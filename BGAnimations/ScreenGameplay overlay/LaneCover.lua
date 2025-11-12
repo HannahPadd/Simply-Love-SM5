@@ -2,7 +2,10 @@ local player = ...
 local pn = ToEnumShortString(player)
 local mods = SL[pn].ActiveModifiers
 local style = GAMESTATE:GetCurrentStyle(player)
+local reverseOffset = THEME:GetMetric("Player", "ReceptorArrowsYReverse")
+local opts = GAMESTATE:GetPlayerState(player):GetCurrentPlayerOptions()
 
+SM(reverseOffset)
 -- don't allow LaneCover to appear in Casual gamemode via profile settings
 if SL.Global.GameMode == "Casual" then
     return
@@ -10,15 +13,16 @@ end
 
 local laneCoverWidth = style:GetWidth(player)
 local y_offset = 80
-local laneCoverHeight = (_screen.h - (_screen.h * (mods.LaneCover / 100)) + y_offset)
-SM("ScreenHeight" .. _screen.h)
-SM("LaneCoverHeight:" .. laneCoverHeight)
+
+local laneCoverHeight = (opts:Reverse() == 1)
+    and (_screen.h - (_screen.h * (mods.LaneCover / 100)) + y_offset)
+    or ((_screen.h * (mods.LaneCover / 100)) + reverseOffset)
 
 
 local af = Def.ActorFrame{
     Name = "LaneCoverActor",
     InitCommand = function(self)
-        self:draworder(100)
+        --self:draworder(120)
     end,
 
     Def.Quad{
