@@ -1,96 +1,50 @@
-local Players = GAMESTATE:GetHumanPlayers();
+-- There's a lot of Lua in ./BGAnimations/ScreenGameplay overlay
+--    and a LOT of Lua in ./BGAnimations/ScreenGameplay underlay
+--
+-- I'm using files in overlay for logic that *does* stuff without
+-- directly drawing any new actors to the screen.
+--
+-- I've tried to title each file helpfully and partition the logic
+-- found in each accordingly. Inline comments in each should provide
+-- insight into the objective of each file.
+--
+-- Def.Actor will be used for each underlay file because I still
+-- need some way to listen for events broadcast by the engine.
+--
+-- I'm using files in Gameplay's underlay for actors that get drawn
+-- to the screen and visible to the player.  You can poke around in
+-- those files to learn more.
+------------------------------------------------------------
 
-local t = Def.ActorFrame{
-	LoadFont("Wendy/_wendy white")..{
-		Text="GAME",
-		InitCommand=function(self) self:xy(_screen.cx,_screen.cy-40):croptop(1):fadetop(1):zoom(1.2):shadowlength(1) end,
-		OnCommand=function(self) self:decelerate(0.5):croptop(0):fadetop(0):glow(1,1,1,1):decelerate(1):glow(1,1,1,1) end,
-		OffCommand=function(self) self:accelerate(0.5):fadeleft(1):cropleft(1) end
-	},
-	LoadFont("Wendy/_wendy white")..{
-		Text="OVER",
-		InitCommand=function(self) self:xy(_screen.cx,_screen.cy+40):croptop(1):fadetop(1):zoom(1.2):shadowlength(1) end,
-		OnCommand=function(self) self:decelerate(0.5):croptop(0):fadetop(0):glow(1,1,1,1):decelerate(1):glow(1,1,1,1) end,
-		OffCommand=function(self) self:accelerate(0.5):fadeleft(1):cropleft(1) end
-	},
+local af = Def.ActorFrame{}
 
-	--Player 1 Stats BG
-	Def.Quad{
-		InitCommand=function(self)
-			self:zoomto(160,_screen.h):xy(80, _screen.h/2):diffuse(color("#00000099"))
-			if ThemePrefs.Get("RainbowMode") then self:diffuse(color("#000000dd")) end
-		end,
-	},
+af[#af+1] = LoadActor("./WhoIsCurrentlyWinning.lua")
+af[#af+1] = LoadActor("./FailOnHoldStart.lua")
 
-	--Player 2 Stats BG
-	Def.Quad{
-		InitCommand=function(self)
-			self:zoomto(160,_screen.h):xy(_screen.w-80, _screen.h/2):diffuse(color("#00000099"))
-			if ThemePrefs.Get("RainbowMode") then self:diffuse(color("#000000dd")) end
-		end,
-	}
-}
+for player in ivalues( GAMESTATE:GetHumanPlayers() ) do
 
-local line_height = 58
-local profilestats_y = 138
-local horiz_line_y   = 288
-local normalstats_y  = 268
+	local pn = ToEnumShortString(player)
 
-for player in ivalues(Players) do
+	-- Use this opportunity to create an empty table for this player's
+	-- gameplay stats for this stage. We'll store all kinds of data in
+	-- this table that would normally only exist in ScreenGameplay so
+	-- that it can persist into ScreenEvaluation to eventually be processed,
+	-- visualized, and complained about. For example, per-column judgments,
+	-- judgment offset data, highscore data, and so on.
+	--
+	-- Sadly, the full details of this Stages.Stats[stage_index] data structure
+	-- is not documented anywhere. :(
+	SL[pn].Stages.Stats[SL.Global.Stages.PlayedThisGame+1] = {}
 
-	local stats
-	local x_pos = player==PLAYER_1 and 80 or _screen.w-80
-	local PlayerStatsAF = Def.ActorFrame{ Name="PlayerStatsAF_"..ToEnumShortString(player) }
+	af[#af+1] = LoadActor("./TrackTimeSpentInGameplay.lua", player)
+	af[#af+1] = LoadActor("./JudgmentOffsetTracking.lua", player)
+	af[#af+1] = LoadActor("./TrackExScoreJudgments.lua", player)
+	af[#af+1] = LoadActor("./TrackFailTime.lua", player)
+	af[#af+1] = LoadActor("./LaneCover.lua", player)
 
-
-	-- first, check if this player is using a profile (local or MemoryCard)
-	if PROFILEMAN:IsPersistentProfile(player) then
-
-		-- if a profile is in use, grab gameplay stats for this session that are pertinent
-		-- to this specific player's profile (highscore name, calories burned, total songs played)
-		local profile_stats = LoadActor("PlayerStatsWithProfile.lua", player)
-
-		-- loop through those stats, adding them to the ActorFrame for this player as BitmapText actors
-		for i,stat in ipairs(profile_stats) do
-			PlayerStatsAF[#PlayerStatsAF+1] = LoadFont("Common Normal")..{
-				Text=stat,
-				InitCommand=function(self)
-					self:diffuse(PlayerColor(player)):zoom(0.95)
-						:xy(x_pos, (line_height*(i-1)) + profilestats_y)
-						:maxwidth(150):vertspacing(-1)
-
-					DiffuseEmojis(self)
-				end
-			}
-		end
-
-		PlayerStatsAF[#PlayerStatsAF+1] = LoadActor("./ProfileAvatar", {player, x_pos})
-	end
-
-	-- horizontal line separating upper stats (profile) from the lower stats (general)
-	PlayerStatsAF[#PlayerStatsAF+1] = Def.Quad{
-		InitCommand=function(self)
-			self:zoomto(120,1):xy(x_pos, horiz_line_y)
-				:diffuse( PlayerColor(player) )
-		end
-	}
-
-	-- retrieve general gameplay session stats for which a profile is not needed
-	stats = LoadActor("PlayerStatsWithoutProfile.lua", player)
-
-	-- loop through those stats, adding them to the ActorFrame for this player as BitmapText actors
-	for i,stat in ipairs(stats) do
-		PlayerStatsAF[#PlayerStatsAF+1] = LoadFont("Common Normal")..{
-			Text=stat,
-			InitCommand=function(self)
-				self:diffuse(PlayerColor(player)):zoom(0.95)
-					:xy(x_pos, (line_height*i) + normalstats_y)
-					:maxwidth(150):vertspacing(-1)
-			end
-		}
-	end
-
-	t[#t+1] = PlayerStatsAF
+	-- FIXME: refactor PerColumnJudgmentTracking to not be inside this loop
+	--        the Lua input callback logic shouldn't be duplicated for each player
+	af[#af+1] = LoadActor("./PerColumnJudgmentTracking.lua", player)
 end
 
-return t
+return af

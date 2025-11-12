@@ -779,12 +779,31 @@ local Overrides = {
 	-------------------------------------------------------------------------
 	LaneCover = {
 		LayoutType = "ShowOneInRow",
+		ExportOnChange = true,
 		Choices = function() 
 			local first = 0
 			local last = 100
 			local step = 1
 
-			return stringify( range(first, last, step), "%g")
+			return range(first, last, step)
+		end,
+				LoadSelections = function(self, list, pn)
+			local val = tonumber(SL[ToEnumShortString(pn)].ActiveModifiers.LaneCover) or 0
+			for i,v in ipairs(self.Choices) do
+				if v == val then
+					list[i] = true
+					break
+				end
+			end
+			return list
+		end,
+		SaveSelections = function(self, list, pn)
+			for i,v in ipairs(self.Choices) do
+				if list[i] then
+					SL[ToEnumShortString(pn)].ActiveModifiers.LaneCover = v
+					break
+				end
+			end
 		end
 	},
 	-------------------------------------------------------------------------
